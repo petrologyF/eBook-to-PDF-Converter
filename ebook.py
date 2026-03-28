@@ -6,18 +6,18 @@ from PIL import Image
 
 # --- 設定項目 ---
 
-CHAPTER = "7"
+CHAPTER = "4"
 
 # スクリーンショット(PNG)の保存先フォルダ
 # 例: r"C:\Users\YourUser\Desktop\MyBook_PNGs"
-PNG_SAVE_DIR = r"C:\Users\climb\OneDrive\デスクトップ\Sed\\" + CHAPTER
+PNG_SAVE_DIR = r"C:\Users\climb\OneDrive - 信州大学\デスクトップ\UE\\" + CHAPTER
 
 # 出力するPDFのフルパス (フォルダ + ファイル名)
 # 例: r"C:\Users\YourUser\Desktop\MyBook.pdf"
-PDF_SAVE_PATH = r"C:\Users\climb\OneDrive - 信州大学\ドキュメント\TextBook\堆積構造の世界\WSS_" + CHAPTER + ".pdf"
+PDF_SAVE_PATH = r"C:\Users\climb\OneDrive - 信州大学\ドキュメント\TextBook\Understanding Earth\UE_" + CHAPTER + ".pdf"
 
 # スクリーンショットを撮影する枚数
-NUM_PAGES = 12
+NUM_PAGES = 18
 
 # 1ページ撮影してから次のページへ移動するまでの待機時間（秒）
 # ページの読み込みが遅い場合は、この時間を長くしてください
@@ -27,10 +27,10 @@ INTERVAL = 1.5
 # 事前に撮影したい電子書籍のウィンドウ範囲を確認し、設定してください。
 # X1, Y1: 範囲の左上隅の座標
 # X2, Y2: 範囲の右下隅の座標
-X1 = 236
-Y1 = 34
-X2 = 2396
-Y2 = 1552
+X1 = 220
+Y1 = 124
+X2 = 2342
+Y2 = 1481
 CAPTURE_REGION = (X1, Y1, X2 - X1, Y2 - Y1)
 
 # 出力するPDFの解像度(DPI)。一般的な印刷品質は300.0です。
