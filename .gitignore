@@ -34,6 +34,9 @@ yarn-error.log*
 out/
 build/
 
+# Local Settings
+settings.json
+
 # OS
 .DS_Store
 Thumbs.db

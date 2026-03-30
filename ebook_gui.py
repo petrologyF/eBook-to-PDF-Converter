@@ -6,6 +6,7 @@ import threading
 from PIL import Image, ImageGrab, ImageTk
 import ctypes
 from tkinter import filedialog
+import json
 
 # マルチモニター＆DPIスケーリングによる座標のズレを防ぐ
 try:
@@ -190,8 +191,35 @@ class EbookCaptureApp(ctk.CTk):
         self.capture_region = None
         self.is_capturing = False
         
+        self.settings_file = "settings.json"
+        self._load_settings()
         self._build_ui()
         
+    def _load_settings(self):
+        """前回の設定を読み込む"""
+        self.saved_data = {}
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, "r", encoding="utf-8") as f:
+                    self.saved_data = json.load(f)
+                    self.capture_region = self.saved_data.get("region")
+            except Exception:
+                self.saved_data = {}
+
+    def _save_settings(self):
+        """現在の設定を保存する"""
+        data = {
+            "filename": self.entry_filename.get(),
+            "chapter": self.entry_chapter.get(),
+            "pages": self.entry_pages.get(),
+            "region": self.capture_region
+        }
+        try:
+            with open(self.settings_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Failed to save settings: {e}")
+
     def _build_ui(self):
         # 1. Title
         title_lbl = ctk.CTkLabel(self, text="eBook to PDF Converter", font=ctk.CTkFont(size=20, weight="bold"))
@@ -201,18 +229,26 @@ class EbookCaptureApp(ctk.CTk):
         ctk.CTkLabel(self, text="File Name:", anchor="w").grid(row=1, column=0, padx=(20, 10), pady=10, sticky="ew")
         self.entry_filename = ctk.CTkEntry(self, placeholder_text="e.g. bookname")
         self.entry_filename.grid(row=1, column=1, padx=(10, 20), pady=10, sticky="ew")
-        self.entry_filename.insert(0, "book")
+        self.entry_filename.insert(0, self.saved_data.get("filename", "book"))
         
         # 3. Chapter
         ctk.CTkLabel(self, text="Chapter:", anchor="w").grid(row=2, column=0, padx=(20, 10), pady=10, sticky="ew")
         self.entry_chapter = ctk.CTkEntry(self, placeholder_text="e.g. 01")
         self.entry_chapter.grid(row=2, column=1, padx=(10, 20), pady=10, sticky="ew")
-        self.entry_chapter.insert(0, "01")
+        
+        last_chapter = self.saved_data.get("chapter", "01")
+        if last_chapter.isdigit():
+            # 数字の場合は+1する（桁数を維持）
+            new_chapter = str(int(last_chapter) + 1).zfill(len(last_chapter))
+            self.entry_chapter.insert(0, new_chapter)
+        else:
+            self.entry_chapter.insert(0, last_chapter)
         
         # 4. Total Pages
         ctk.CTkLabel(self, text="Total Pages:", anchor="w").grid(row=3, column=0, padx=(20, 10), pady=10, sticky="ew")
         self.entry_pages = ctk.CTkEntry(self, placeholder_text="e.g. 50")
         self.entry_pages.grid(row=3, column=1, padx=(10, 20), pady=10, sticky="ew")
+        self.entry_pages.insert(0, self.saved_data.get("pages", ""))
         
         # 5. Interval
         ctk.CTkLabel(self, text="Interval (sec):", anchor="w").grid(row=4, column=0, padx=(20, 10), pady=10, sticky="ew")
@@ -232,7 +268,11 @@ class EbookCaptureApp(ctk.CTk):
         self.btn_start = ctk.CTkButton(btn_frame, text="2. Start Capture", command=self.start_capture_thread, fg_color="#2EA043", hover_color="#238636")
         self.btn_start.grid(row=0, column=1, padx=(5, 0), sticky="ew")
         
-        self.lbl_region = ctk.CTkLabel(self, text="Region: Not selected", text_color="gray")
+        if self.capture_region:
+            r = self.capture_region
+            self.lbl_region = ctk.CTkLabel(self, text=f"Region: X: {r[0]}, Y: {r[1]}, W: {r[2]}, H: {r[3]}", text_color="#58A6FF")
+        else:
+            self.lbl_region = ctk.CTkLabel(self, text="Region: Not selected", text_color="gray")
         self.lbl_region.grid(row=6, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="ew")
         
         # Progress & Status
@@ -274,6 +314,9 @@ class EbookCaptureApp(ctk.CTk):
         self.is_capturing = True
         self.btn_start.configure(state="disabled")
         self.btn_region.configure(state="disabled")
+        
+        # 設定を保存
+        self._save_settings()
         
         thread = threading.Thread(target=self.capture_loop, args=(pages, interval, fname, chapter, self.capture_region))
         thread.daemon = True
