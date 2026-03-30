@@ -3,7 +3,18 @@ import pyautogui
 import time
 import os
 import threading
-from PIL import Image
+from PIL import Image, ImageGrab, ImageTk
+import ctypes
+from tkinter import filedialog
+
+# マルチモニター＆DPIスケーリングによる座標のズレを防ぐ
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -14,7 +25,15 @@ class RegionSelectorOverlay(ctk.CTkToplevel):
         super().__init__(parent)
         self.callback = callback
         
-        self.attributes('-fullscreen', True)
+        # マルチモニター全画面を覆うための処理 (Windows固有)
+        user32 = ctypes.windll.user32
+        self.v_x = user32.GetSystemMetrics(76)
+        self.v_y = user32.GetSystemMetrics(77)
+        v_width = user32.GetSystemMetrics(78)
+        v_height = user32.GetSystemMetrics(79)
+        
+        self.geometry(f"{v_width}x{v_height}+{self.v_x}+{self.v_y}")
+        self.overrideredirect(True)
         self.attributes('-alpha', 0.4)
         self.attributes('-topmost', True)
         self.config(cursor="cross")
@@ -44,15 +63,117 @@ class RegionSelectorOverlay(ctk.CTkToplevel):
             
     def on_release(self, event):
         end_x, end_y = event.x, event.y
-        x = min(self.start_x, end_x)
-        y = min(self.start_y, end_y)
-        w = abs(end_x - self.start_x)
-        h = abs(end_y - self.start_y)
+        
+        # マルチモニター上の絶対座標に変換
+        abs_x1 = self.start_x + self.v_x
+        abs_y1 = self.start_y + self.v_y
+        abs_x2 = end_x + self.v_x
+        abs_y2 = end_y + self.v_y
+        
+        x = min(abs_x1, abs_x2)
+        y = min(abs_y1, abs_y2)
+        w = abs(abs_x2 - abs_x1)
+        h = abs(abs_y2 - abs_y1)
         
         self.destroy()
         
         if w > 10 and h > 10:
-            self.callback((x, y, w, h))
+            self.callback((int(x), int(y), int(w), int(h)))
+
+
+class PreviewWindow(ctk.CTkToplevel):
+    """キャプチャ完了後のプレビュー＆PDF保存ウィンドウ"""
+    def __init__(self, parent, image_paths, default_name):
+        super().__init__(parent)
+        self.image_paths = image_paths
+        self.default_name = default_name
+        self._thumbs = []  # GC防止用
+
+        self.title("Preview & Save PDF")
+        self.geometry("700x520")
+        self.minsize(600, 450)
+        self.grab_set()  # モーダル化
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # ---- サムネイルスクロールエリア ----
+        self.scroll_frame = ctk.CTkScrollableFrame(self, label_text=f"{len(image_paths)} pages captured")
+        self.scroll_frame.grid(row=0, column=0, padx=16, pady=(16, 8), sticky="nsew")
+
+        cols = 4
+        for i, path in enumerate(image_paths):
+            img = Image.open(path)
+            img.thumbnail((140, 140))
+            tk_img = ImageTk.PhotoImage(img)
+            self._thumbs.append(tk_img)
+
+            frame = ctk.CTkFrame(self.scroll_frame)
+            frame.grid(row=i // cols, column=i % cols, padx=6, pady=6)
+
+            lbl_img = ctk.CTkLabel(frame, image=tk_img, text="")
+            lbl_img.pack(padx=4, pady=(4, 0))
+            lbl_num = ctk.CTkLabel(frame, text=f"p.{i+1}", font=ctk.CTkFont(size=11))
+            lbl_num.pack(pady=(0, 4))
+
+        # ---- ボタンエリア ----
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.grid(row=1, column=0, padx=16, pady=(4, 16), sticky="ew")
+        btn_frame.grid_columnconfigure(0, weight=1)
+        btn_frame.grid_columnconfigure(1, weight=1)
+
+        self.lbl_info = ctk.CTkLabel(btn_frame, text="内容を確認してから保存場所を指定してください", text_color="gray")
+        self.lbl_info.grid(row=0, column=0, columnspan=2, pady=(0, 8))
+
+        btn_cancel = ctk.CTkButton(btn_frame, text="閉じる（破棄）",
+                                   fg_color="#3d3d3d", hover_color="#555",
+                                   command=self._on_cancel)
+        btn_cancel.grid(row=1, column=0, padx=(0, 6), sticky="ew")
+
+        btn_save = ctk.CTkButton(btn_frame, text="💾  保存場所を指定してPDF保存",
+                                 fg_color="#2EA043", hover_color="#238636",
+                                 command=self._on_save)
+        btn_save.grid(row=1, column=1, padx=(6, 0), sticky="ew")
+
+    def _on_save(self):
+        save_path = filedialog.asksaveasfilename(
+            parent=self,
+            title="PDFの保存先を指定",
+            initialfile=self.default_name,
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
+        )
+        if not save_path:
+            return  # キャンセルされた場合は何もしない
+
+        self.lbl_info.configure(text="PDF生成中...", text_color="#D29922")
+        self.update()
+
+        try:
+            images = []
+            first = Image.open(self.image_paths[0]).convert('RGB')
+            for path in self.image_paths[1:]:
+                images.append(Image.open(path).convert('RGB'))
+            first.save(save_path, save_all=True, append_images=images)
+            self.lbl_info.configure(text=f"✅ 保存完了: {os.path.basename(save_path)}", text_color="#2EA043")
+        except Exception as e:
+            self.lbl_info.configure(text=f"❌ エラー: {e}", text_color="#F85149")
+
+    def _on_cancel(self):
+        # 一時ファイルを削除して閉じる
+        for path in self.image_paths:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        # 空の一時フォルダも削除
+        try:
+            parent_dir = os.path.dirname(self.image_paths[0])
+            if os.path.isdir(parent_dir) and not os.listdir(parent_dir):
+                os.rmdir(parent_dir)
+        except Exception:
+            pass
+        self.destroy()
 
 
 class EbookCaptureApp(ctk.CTk):
@@ -190,22 +311,18 @@ class EbookCaptureApp(ctk.CTk):
                 else:
                     time.sleep(0.5)
                 
-                img = pyautogui.screenshot(region=region)
+                # pyautoguiの代わりにマルチモニター対応のPillowを使用
+                bbox = (region[0], region[1], region[0] + region[2], region[1] + region[3])
+                img = ImageGrab.grab(bbox=bbox, all_screens=True)
+                
                 img_path = os.path.join(temp_dir, f"page_{page:04d}.png")
                 img.save(img_path)
                 image_paths.append(img_path)
                 
-            # PDF結合
-            self.after(0, self.auto_update_status, "Compiling PDF...", "#D29922")
-            pdf_path = f"{fname}_{chapter}.pdf"
-            self.compile_pdf(image_paths, pdf_path)
-            
-            # クリーンナップ
-            for path in image_paths:
-                os.remove(path)
-            os.rmdir(temp_dir)
-            
-            self.after(0, self.auto_update_status, f"Done! Saved: {pdf_path}", "#2EA043")
+            # プレビューウィンドウを開く（PDF即時保存はやめる）
+            default_pdf_name = f"{fname}_{chapter}.pdf"
+            self.after(0, self.auto_update_status, "Done! Opening preview...", "#2EA043")
+            self.after(100, lambda: PreviewWindow(self, image_paths, default_pdf_name))
             
         except pyautogui.FailSafeException:
             self.after(0, self.auto_update_status, "Hit Edge! Cancelled by Fail-Safe.", "#F85149")
@@ -213,20 +330,16 @@ class EbookCaptureApp(ctk.CTk):
             self.after(0, self.auto_update_status, f"Error: {str(e)}", "#F85149")
         finally:
             self.is_capturing = False
-            self.after(0, self.btn_start.configure, state="normal")
-            self.after(0, self.btn_region.configure, state="normal")
+            self.after(0, lambda: self.btn_start.configure(state="normal"))
+            self.after(0, lambda: self.btn_region.configure(state="normal"))
 
     def compile_pdf(self, image_paths, output_pdf):
         if not image_paths:
             return
-            
         images = []
         first_image = Image.open(image_paths[0]).convert('RGB')
-        
         for path in image_paths[1:]:
-            img = Image.open(path).convert('RGB')
-            images.append(img)
-            
+            images.append(Image.open(path).convert('RGB'))
         first_image.save(output_pdf, save_all=True, append_images=images)
 
 
