@@ -91,8 +91,8 @@ class PreviewWindow(ctk.CTkToplevel):
         self._thumbs = []  # GC防止用
 
         self.title("Preview & Save PDF")
-        self.geometry("700x520")
-        self.minsize(600, 450)
+        self.geometry("700x580")
+        self.minsize(600, 500)
         self.grab_set()  # モーダル化
 
         self.grid_columnconfigure(0, weight=1)
@@ -117,9 +117,25 @@ class PreviewWindow(ctk.CTkToplevel):
             lbl_num = ctk.CTkLabel(frame, text=f"p.{i+1}", font=ctk.CTkFont(size=11))
             lbl_num.pack(pady=(0, 4))
 
+        # ---- オプションエリア (PDF表示・綴じ設定) ----
+        opts_frame = ctk.CTkFrame(self, fg_color="transparent")
+        opts_frame.grid(row=1, column=0, padx=16, pady=(4, 4), sticky="ew")
+        opts_frame.grid_columnconfigure(1, weight=1)
+        opts_frame.grid_columnconfigure(3, weight=1)
+
+        ctk.CTkLabel(opts_frame, text="綴じ方向 (Direction):").grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+        self.combo_dir = ctk.CTkComboBox(opts_frame, values=["左綴じ (L2R) - 横書き用", "右綴じ (R2L) - 縦書き・漫画用"])
+        self.combo_dir.grid(row=0, column=1, padx=(0, 20), pady=5, sticky="ew")
+        self.combo_dir.set("左綴じ (L2R) - 横書き用")
+
+        ctk.CTkLabel(opts_frame, text="表示レイアウト (Layout):").grid(row=0, column=2, padx=(0, 10), pady=5, sticky="w")
+        self.combo_layout = ctk.CTkComboBox(opts_frame, values=["単一ページ (Single)", "見開き表示 (Spread)"])
+        self.combo_layout.grid(row=0, column=3, pady=5, sticky="ew")
+        self.combo_layout.set("単一ページ (Single)")
+
         # ---- ボタンエリア ----
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.grid(row=1, column=0, padx=16, pady=(4, 16), sticky="ew")
+        btn_frame.grid(row=2, column=0, padx=16, pady=(4, 16), sticky="ew")
         btn_frame.grid_columnconfigure(0, weight=1)
         btn_frame.grid_columnconfigure(1, weight=1)
 
@@ -150,12 +166,49 @@ class PreviewWindow(ctk.CTkToplevel):
         self.lbl_info.configure(text="PDF生成中...", text_color="#D29922")
         self.update()
 
+        # オプションを取得
+        is_r2l = "右綴じ" in self.combo_dir.get()
+        layout_sel = self.combo_layout.get()
+
         try:
             images = []
             first = Image.open(self.image_paths[0]).convert('RGB')
             for path in self.image_paths[1:]:
                 images.append(Image.open(path).convert('RGB'))
+            
+            # まずPillowでPDFを生成
             first.save(save_path, save_all=True, append_images=images)
+            
+            # pypdfで表示設定を最適化
+            try:
+                from pypdf import PdfReader, PdfWriter
+                reader = PdfReader(save_path)
+                writer = PdfWriter()
+                
+                for page in reader.pages:
+                    writer.add_page(page)
+                    
+                writer.create_viewer_preferences()
+                writer.viewer_preferences.fit_window = True
+                
+                if is_r2l:
+                    writer.viewer_preferences.direction = "/R2L"
+                    if layout_sel == "見開き表示 (Spread)":
+                        writer.page_layout = "/TwoPageRight"
+                    else:
+                        writer.page_layout = "/SinglePage"
+                else:
+                    writer.viewer_preferences.direction = "/L2R"
+                    if layout_sel == "見開き表示 (Spread)":
+                        writer.page_layout = "/TwoPageLeft"
+                    else:
+                        writer.page_layout = "/SinglePage"
+                        
+                with open(save_path, "wb") as f:
+                    writer.write(f)
+            except Exception as pe:
+                print(f"pypdf post-processing failed: {pe}")
+                
             self.lbl_info.configure(text=f"✅ 保存完了: {os.path.basename(save_path)}", text_color="#2EA043")
         except Exception as e:
             self.lbl_info.configure(text=f"❌ エラー: {e}", text_color="#F85149")

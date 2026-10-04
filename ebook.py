@@ -10,11 +10,11 @@ CHAPTER = "4"
 
 # スクリーンショット(PNG)の保存先フォルダ
 # 例: r"C:\Users\YourUser\Desktop\MyBook_PNGs"
-PNG_SAVE_DIR = r"C:\Users\climb\OneDrive - 信州大学\デスクトップ\UE\\" + CHAPTER
+PNG_SAVE_DIR = os.path.join(r"C:\Users\climb\OneDrive - 信州大学\デスクトップ\UE", CHAPTER)
 
 # 出力するPDFのフルパス (フォルダ + ファイル名)
 # 例: r"C:\Users\YourUser\Desktop\MyBook.pdf"
-PDF_SAVE_PATH = r"C:\Users\climb\OneDrive - 信州大学\ドキュメント\TextBook\Understanding Earth\UE_" + CHAPTER + ".pdf"
+PDF_SAVE_PATH = os.path.join(r"C:\Users\climb\OneDrive - 信州大学\ドキュメント\TextBook\Understanding Earth", f"UE_{CHAPTER}.pdf")
 
 # スクリーンショットを撮影する枚数
 NUM_PAGES = 18
@@ -35,6 +35,13 @@ CAPTURE_REGION = (X1, Y1, X2 - X1, Y2 - Y1)
 
 # 出力するPDFの解像度(DPI)。一般的な印刷品質は300.0です。
 RESOLUTION_DPI = 500.0
+
+# --- PDF表示・綴じ設定 ---
+# 綴じ方向: "l2r" (左綴じ/横書き) または "r2l" (右綴じ/縦書き・漫画)
+DIRECTION = "l2r"
+
+# ページレイアウト: "single" (1ページ表示) または "tworight" (見開き・右綴じ用) または "twoleft" (見開き・左綴じ用)
+PAGE_LAYOUT = "single"
 
 # -----------------
 
@@ -126,6 +133,42 @@ def convert_png_to_pdf(png_folder_path, pdf_file_path, resolution_dpi):
     except Exception as e:
         print(f"PDFの保存中にエラーが発生しました: {e}")
 
+def optimize_pdf_layout(pdf_file_path, direction="l2r", layout="single"):
+    """
+    pypdfを使って、PDFの表示設定（1ページ表示/フィット表示/綴じ方向）を最適化する
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+        
+        reader = PdfReader(pdf_file_path)
+        writer = PdfWriter()
+        
+        for page in reader.pages:
+            writer.add_page(page)
+            
+        writer.create_viewer_preferences()
+        writer.viewer_preferences.fit_window = True
+        
+        if direction == "r2l":
+            writer.viewer_preferences.direction = "/R2L"
+            if layout == "tworight":
+                writer.page_layout = "/TwoPageRight"
+            else:
+                writer.page_layout = "/SinglePage"
+        else:
+            writer.viewer_preferences.direction = "/L2R"
+            if layout == "twoleft":
+                writer.page_layout = "/TwoPageLeft"
+            else:
+                writer.page_layout = "/SinglePage"
+                
+        with open(pdf_file_path, "wb") as f:
+            writer.write(f)
+            
+        print("PDFの表示設定（綴じ方向・レイアウト）を最適化しました。")
+    except Exception as e:
+        print(f"PDF表示設定の最適化中にエラーが発生しました: {e}")
+
 def main():
     """
     メイン処理
@@ -143,6 +186,13 @@ def main():
         png_folder_path=PNG_SAVE_DIR,
         pdf_file_path=PDF_SAVE_PATH,
         resolution_dpi=RESOLUTION_DPI
+    )
+    
+    # PDF表示・綴じ設定の適用
+    optimize_pdf_layout(
+        pdf_file_path=PDF_SAVE_PATH,
+        direction=DIRECTION,
+        layout=PAGE_LAYOUT
     )
 
 if __name__ == "__main__":
