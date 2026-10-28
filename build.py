@@ -25,7 +25,8 @@ for a in binary_args:
     print(" ", a.replace("--add-binary=", ""))
 
 PyInstaller.__main__.run([
-    'ebook_gui.py',
+    'app.py',
+    '--name=eBookToPDF',
     '--noconfirm',
     '--windowed',
     '--onefile',

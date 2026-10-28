@@ -244,7 +244,7 @@ class EbookCaptureApp(ctk.CTk):
         self.capture_region = None
         self.is_capturing = False
         
-        self.settings_file = "settings.json"
+        self.settings_file = "config.json"
         self._load_settings()
         self._build_ui()
         
